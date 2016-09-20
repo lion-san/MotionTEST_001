@@ -14,17 +14,23 @@
 //----------------------------------------------------------//
 
 
-#include <SPI.h>                                //SPIライブラリ
-#include <Wire.h>                               //I2Cライブラリ
-#include <SparkFunLSM9DS1.h>                  //LSM9DS1ライブラリ：https://github.com/sparkfun/LSM9DS1_Breakout
+#include <SPI.h>                        //SPIライブラリ
+#include <Wire.h>                       //I2Cライブラリ
+#include <SparkFunLSM9DS1.h>          //LSM9DS1ライブラリ：https://github.com/sparkfun/LSM9DS1_Breakout
 #include <SD.h>
 #include <LSM9DS1_Registers.h>
 #include <LSM9DS1_Types.h>
-#include <SoftwareSerial.h>
-#include <MadgwickAHRS.h>
+#include <SoftwareSerial.h>                  
+#include <MadgwickAHRS.h>               //MadgwickAHRS : https://github.com/arduino-libraries/MadgwickAHRS
+#include <Kalman.h>               //KalmanFilter : https://github.com/TKJElectronics/KalmanFilter
 
+///////////////////////カルマンフィルタ/////////////////////////////
 Madgwick filter;
-
+Kalman kalmanX; // instances
+Kalman kalmanY; // instances
+unsigned long time;
+double kalAngleX, kalAngleY; // Calculated angle using a Kalman filter
+////////////////////////////////////////////////////////////////
 
 //#define ADAddr 0x48//
 
@@ -51,8 +57,8 @@ int WRITE_INTERVAL = 1000;
 
 //###############################################
 //MicroSD 
-//const int chipSelect = 4;//Arduino UNO
-const int chipSelect = 10;//Arduino Micro
+const int chipSelect = 4;//Arduino UNO
+//const int chipSelect = 10;//Arduino Micro
 //###############################################
 
 const int tact_switch = 7;//タクトスイッチ
@@ -110,8 +116,13 @@ void setup(void) {
       ;
   }
   //=======================================================
-
+delay(100); // Wait for sensor to stabilize
 filter.begin(25);
+
+//初期値計算
+initCalmanFilter();
+
+
   
 }
 
@@ -182,12 +193,11 @@ void loop(void) {
 /**
  * updateMotionSensors
  */
-unsigned long time = millis();
 String updateMotionSensors(boolean print)
 {
 
   //Serial.println( millis() - time);
-  time = millis();
+  //time = millis();
 
   
   //Read three sensors data on the memory
@@ -196,7 +206,8 @@ String updateMotionSensors(boolean print)
   readMag();
   
   //メモリ上の角度データの更新（前回値と今回値が考慮される）  
-  return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.my, -imu.mx, imu.mz, print) + "\n";
+//  return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
 
 }
 
@@ -227,8 +238,6 @@ void readMag()
 
   imu.readMag();
 
-
-
 }
 //---------------------------------------------------------
 /**
@@ -250,7 +259,7 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
 {
 
   String output = "";
-
+/*
   //重力加速度から求めた角度ををカルマンフィルタの初期値とする
   float roll = atan2(ay, az);
   float pitch = atan2(-ax, sqrt(ay * ay + az * az));
@@ -326,10 +335,10 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
     filter.updateIMU(gx, gy, gz, ax, ay, az);
 
     // print the heading, pitch and roll
-    roll = filter.getRoll();
-    pitch = filter.getPitch();
-    heading = filter.getYaw();
-    Serial.print("Orientation: ");
+    double roll = filter.getRoll();
+    double pitch = filter.getPitch();
+    double heading = filter.getYaw();
+    Serial.print("Orientation : ");
     Serial.print(heading);
     Serial.print(" ");
     Serial.print(pitch);
@@ -337,8 +346,55 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
     Serial.println(roll);
 
 
+    kalmanX.setAngle(roll); // Set starting angle
+    kalmanY.setAngle(pitch); // Set starting angle
+
+    //時間の更新
+    double dt = (double)(millis() - time) / 1000; // Calculate delta time  
+    time = millis();
+
+double gyroXrate = gx / 131.0; // Convert to deg/s
+double gyroYrate = gy / 131.0; // Convert to deg/s
+
+    //カルマンアングルの計算
+    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); 
+    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
+
+    Serial.print("CalmanFilter: ");
+    Serial.print(heading);
+    Serial.print(" ");
+    Serial.print(kalAngleY);
+    Serial.print(" ");
+    Serial.println(kalAngleX);
+
 
   return output;
+}
+
+/**
+ * 
+ */
+void initCalmanFilter(){
+
+  readGyro();
+  readAccel();
+  readMag();
+  
+  // update the filter, which computes orientation
+  //filter.updateIMU(imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az);
+  filter.updateIMU(imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az);
+
+  // print the heading, pitch and roll
+  double roll = filter.getRoll();
+  double pitch = filter.getPitch();
+  double heading = filter.getYaw();
+
+
+  kalmanX.setAngle(roll); // Set starting angle
+  kalmanY.setAngle(pitch); // Set starting angle
+
+  //時間の更新
+  time = millis();
 }
 
 
