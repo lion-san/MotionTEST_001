@@ -183,7 +183,7 @@ void loop(void) {
 
   //Serial.println(motionData);
 
-  delay(10);
+  delay(25);
 
 }
 
@@ -259,17 +259,13 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
 {
 
   String output = "";
-/*
-  //重力加速度から求めた角度ををカルマンフィルタの初期値とする
-  float roll = atan2(ay, az);
-  float pitch = atan2(-ax, sqrt(ay * ay + az * az));
-
-  //Serial.print("roll:");Serial.print("\t");Serial.print(roll);Serial.print("\t");
-  //Serial.print("pitch:");Serial.print("\t");Serial.println(pitch);Serial.println("");
 
 
+  double roll = atan2(ay, az);
+  double pitch = atan(-ax / sqrt(ay * ay + az * az));
 
-  float heading;
+                   
+  double heading;
   if (my == 0)
     heading = (mx < 0) ? 180.0 : 0;
   else
@@ -286,17 +282,35 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
   pitch *= 180.0 / PI;
   roll  *= 180.0 / PI;
 
+    Serial.print("Orientation : ");
+    Serial.print(heading);
+    Serial.print(" ");
+    Serial.print(pitch);
+    Serial.print(" ");
+    Serial.println(roll);
+
+
+
+    //時間の更新
+    double dt = (double)(millis() - time) / 1000; // Calculate delta time  
+    time = millis();
+
+    
 
   //*** Gyro ***
-  float gyro_x =  gx * SAMPLETIME / 1000;
-  float gyro_y = gy * SAMPLETIME / 1000;
-
-
+  /*float gyro_x =  gx * dt;
+  float gyro_y = gy * dt;
 
   //相補フィルタの出力
   prev_pitch = complementFilter( prev_pitch, gyro_x, pitch );
   prev_roll = complementFilter( prev_roll, gyro_y, roll );
 
+    Serial.print("Soho filter : ");
+    Serial.print(heading);
+    Serial.print(" ");
+    Serial.print(prev_pitch);
+    Serial.print(" ");
+    Serial.println(prev_roll);
 
   //出力が求められる場合のみ、文字列計算
   if(print){
@@ -306,12 +320,6 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
     output += prev_roll;
   }
 
-
-  double g_x = ax * 0.0039;
-  double g_y = ay * 0.0039;
-
-  double x_rol = asin(g_y / 1) * (180 / PI);
-  double y_rol = asin(g_x / 1) * (180 / PI);
 
   /*Serial.print("X_rol:");Serial.print("\t");Serial.print(x_rol);Serial.print("\t");
   Serial.print("Y_rol:");Serial.print("\t");Serial.print(y_rol);Serial.println("");
@@ -332,33 +340,32 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
     //*/
 
     // update the filter, which computes orientation
-    filter.updateIMU(gx, gy, gz, ax, ay, az);
+    //filter.updateIMU(gx, gy, gz, ax, ay, az);
+    /*filter.updateIMU(imu.gx, imu.gy, imu.gz, ax, ay, az);
 
     // print the heading, pitch and roll
-    double roll = filter.getRoll();
-    double pitch = filter.getPitch();
-    double heading = filter.getYaw();
-    Serial.print("Orientation : ");
-    Serial.print(heading);
+    double roll2 = filter.getRoll();
+    double pitch2 = filter.getPitch();
+    double heading2 = filter.getYaw();
+    Serial.print("IMU filter  : ");
+    Serial.print(heading2);
     Serial.print(" ");
-    Serial.print(pitch);
+    Serial.print(pitch2);
     Serial.print(" ");
-    Serial.println(roll);
+    Serial.println(roll2);*/
 
-
-    kalmanX.setAngle(roll); // Set starting angle
-    kalmanY.setAngle(pitch); // Set starting angle
-
-    //時間の更新
-    double dt = (double)(millis() - time) / 1000; // Calculate delta time  
-    time = millis();
 
 double gyroXrate = gx / 131.0; // Convert to deg/s
 double gyroYrate = gy / 131.0; // Convert to deg/s
 
+    kalmanX.setAngle(roll); // Set starting angle
+    kalmanY.setAngle(pitch); // Set starting angle
+
     //カルマンアングルの計算
     kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); 
     kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
+//    kalAngleX = kalmanX.getAngle(roll, gx, dt); 
+//    kalAngleY = kalmanY.getAngle(pitch, gy, dt); 
 
     Serial.print("CalmanFilter: ");
     Serial.print(heading);
