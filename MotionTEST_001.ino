@@ -21,6 +21,9 @@
 #include <LSM9DS1_Registers.h>
 #include <LSM9DS1_Types.h>
 #include <SoftwareSerial.h>
+#include <MadgwickAHRS.h>
+
+Madgwick filter;
 
 
 //#define ADAddr 0x48//
@@ -108,7 +111,7 @@ void setup(void) {
   }
   //=======================================================
 
-
+filter.begin(25);
   
 }
 
@@ -252,8 +255,8 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
   float roll = atan2(ay, az);
   float pitch = atan2(-ax, sqrt(ay * ay + az * az));
 
-  //Serial.print("roll:");Serial.println(roll);
-  //Serial.print("pitch:");Serial.println(pitch);
+  //Serial.print("roll:");Serial.print("\t");Serial.print(roll);Serial.print("\t");
+  //Serial.print("pitch:");Serial.print("\t");Serial.println(pitch);Serial.println("");
 
 
 
@@ -298,23 +301,40 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
   double g_x = ax * 0.0039;
   double g_y = ay * 0.0039;
 
-  double x_rol = asin(g_y / 1) * (180 / 3.14159);
-  double y_rol = asin(g_x / 1) * (180 / 3.14159);
+  double x_rol = asin(g_y / 1) * (180 / PI);
+  double y_rol = asin(g_x / 1) * (180 / PI);
 
-  //Serial.print("X_rol:");Serial.println(x_rol);
-  //Serial.print("Y_rol:");Serial.println(y_rol);
+  /*Serial.print("X_rol:");Serial.print("\t");Serial.print(x_rol);Serial.print("\t");
+  Serial.print("Y_rol:");Serial.print("\t");Serial.print(y_rol);Serial.println("");
 
-  //Serial.println("====================");
+  Serial.println("====================");
+*/
 
+/*
+    Serial.print("Orientation: ");
+    Serial.print(heading);
+    Serial.print(" ");
+    //Serial.print(pitch);
+    Serial.print(prev_pitch);
+    Serial.print(" ");
+    //Serial.println(roll);
+    Serial.println(prev_roll);
+    
+    //*/
 
+    // update the filter, which computes orientation
+    filter.updateIMU(gx, gy, gz, ax, ay, az);
 
+    // print the heading, pitch and roll
+    roll = filter.getRoll();
+    pitch = filter.getPitch();
+    heading = filter.getYaw();
     Serial.print("Orientation: ");
     Serial.print(heading);
     Serial.print(" ");
     Serial.print(pitch);
     Serial.print(" ");
     Serial.println(roll);
-
 
 
 
