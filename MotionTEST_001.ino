@@ -57,8 +57,8 @@ int WRITE_INTERVAL = 1000;
 
 //###############################################
 //MicroSD 
-const int chipSelect = 4;//Arduino UNO
-//const int chipSelect = 10;//Arduino Micro
+//const int chipSelect = 4;//Arduino UNO
+const int chipSelect = 10;//Arduino Micro
 //###############################################
 
 const int tact_switch = 7;//タクトスイッチ
@@ -117,7 +117,7 @@ void setup(void) {
   }
   //=======================================================
 delay(100); // Wait for sensor to stabilize
-filter.begin(25);
+filter.begin(5);
 
 //初期値計算
 initCalmanFilter();
@@ -183,7 +183,7 @@ void loop(void) {
 
   //Serial.println(motionData);
 
-  delay(25);
+  delay(2);
 
 }
 
@@ -206,8 +206,8 @@ String updateMotionSensors(boolean print)
   readMag();
   
   //メモリ上の角度データの更新（前回値と今回値が考慮される）  
-//  return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
-  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+//  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
 
 }
 
@@ -243,9 +243,9 @@ void readMag()
 /**
  * printAttitude
  * 取得したデータをシリアル出力する関数
- * gx : ジャイロスコープ X値
- * gy : ジャイロスコープ Y値
- * gz : ジャイロスコープ Z値
+ * gx : ジャイロスコープ X値 deg/s
+ * gy : ジャイロスコープ Y値 deg/s
+ * gz : ジャイロスコープ Z値 deg/s
  * ax : 加速度センサー X値
  * ay : 加速度センサー Y値
  * az : 加速度センサー Z値
@@ -264,6 +264,12 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
   double roll = atan2(ay, az);
   double pitch = atan(-ax / sqrt(ay * ay + az * az));
 
+
+  //時間の更新
+//  double dt = (double)(millis() - time) / 1000; // Calculate delta time  
+  double dt = (double)(millis() - time) / 1000000; // Calculate delta time  
+//  time = millis();
+  time = micros();
                    
   double heading;
   if (my == 0)
@@ -282,7 +288,10 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
   pitch *= 180.0 / PI;
   roll  *= 180.0 / PI;
 
-    Serial.print("Orientation : ");
+
+heading = 0;
+
+    Serial.print("Orientation: ");
     Serial.print(heading);
     Serial.print(" ");
     Serial.print(pitch);
@@ -291,9 +300,7 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
 
 
 
-    //時間の更新
-    double dt = (double)(millis() - time) / 1000; // Calculate delta time  
-    time = millis();
+
 
     
 
@@ -338,34 +345,39 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
     Serial.println(prev_roll);
     
     //*/
+int factor = 800;
 
     // update the filter, which computes orientation
     //filter.updateIMU(gx, gy, gz, ax, ay, az);
-    /*filter.updateIMU(imu.gx, imu.gy, imu.gz, ax, ay, az);
+    filter.updateIMU(gx/factor, gy/factor, gz/factor, ax, ay, az);
+
 
     // print the heading, pitch and roll
     double roll2 = filter.getRoll();
     double pitch2 = filter.getPitch();
     double heading2 = filter.getYaw();
-    Serial.print("IMU filter  : ");
+    heading2 = 0;
+    Serial.print("MadgwickAHRS: ");
     Serial.print(heading2);
     Serial.print(" ");
     Serial.print(pitch2);
     Serial.print(" ");
-    Serial.println(roll2);*/
+    Serial.println(roll2);
 
 
-double gyroXrate = gx / 131.0; // Convert to deg/s
-double gyroYrate = gy / 131.0; // Convert to deg/s
+//double gyroXrate = gx / 131.0; // Convert to deg/s
+//double gyroYrate = gy / 131.0; // Convert to deg/s
 
     kalmanX.setAngle(roll); // Set starting angle
     kalmanY.setAngle(pitch); // Set starting angle
 
     //カルマンアングルの計算
-    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); 
-    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
-//    kalAngleX = kalmanX.getAngle(roll, gx, dt); 
-//    kalAngleY = kalmanY.getAngle(pitch, gy, dt); 
+//    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); 
+//    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
+    kalAngleX = kalmanX.getAngle(roll, gx, dt); 
+    kalAngleY = kalmanY.getAngle(pitch, gy, dt); 
+
+Serial.println(dt);
 
     Serial.print("CalmanFilter: ");
     Serial.print(heading);
@@ -389,19 +401,25 @@ void initCalmanFilter(){
   
   // update the filter, which computes orientation
   //filter.updateIMU(imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az);
-  filter.updateIMU(imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az);
-
+//  filter.updateIMU(imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az);
   // print the heading, pitch and roll
-  double roll = filter.getRoll();
-  double pitch = filter.getPitch();
-  double heading = filter.getYaw();
+//  double roll = filter.getRoll();
+//  double pitch = filter.getPitch();
+//  double heading = filter.getYaw();
+
+
+  double roll = atan2(imu.ay, imu.az);
+  double pitch = atan(-imu.ax / sqrt(imu.ay * imu.ay + imu.az * imu.az));
+
 
 
   kalmanX.setAngle(roll); // Set starting angle
   kalmanY.setAngle(pitch); // Set starting angle
 
+
   //時間の更新
-  time = millis();
+  //time = millis();
+  time = micros();
 }
 
 
