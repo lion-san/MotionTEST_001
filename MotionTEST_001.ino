@@ -30,6 +30,9 @@ Kalman kalmanX; // instances
 Kalman kalmanY; // instances
 unsigned long time;
 double kalAngleX, kalAngleY; // Calculated angle using a Kalman filter
+double accX, accY, accZ; 
+double gyroX, gyroY, gyroZ; 
+float roll, pitch; 
 ////////////////////////////////////////////////////////////////
 
 //#define ADAddr 0x48//
@@ -46,6 +49,8 @@ double kalAngleX, kalAngleY; // Calculated angle using a Kalman filter
 #define RX 8                            //GPS用のソフトウェアシリアル
 #define TX 9                            //GPS用のソフトウェアシリアル
 #define SENTENCES_BUFLEN      82        // GPSのメッセージデータバッファの個数
+
+#define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead - please read: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf 
 
 //-------------------------------------------------------------------------
 //[Global valiables]
@@ -122,8 +127,6 @@ filter.begin(5);
 //初期値計算
 initCalmanFilter();
 
-
-  
 }
 
 /**
@@ -206,8 +209,8 @@ String updateMotionSensors(boolean print)
   readMag();
   
   //メモリ上の角度データの更新（前回値と今回値が考慮される）  
-  return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
-//  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  //return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
 
 }
 
@@ -260,36 +263,58 @@ String printAttitude(float gx, float gy, float gz, float ax, float ay, float az,
 
   String output = "";
 
+  accX = imu.ax; 
+  accY = imu.ay; 
+  accZ = imu.az; 
 
-  double roll = atan2(ay, az);
-  double pitch = atan(-ax / sqrt(ay * ay + az * az));
+  
+  gyroX = imu.gx; 
+  gyroY = imu.gy; 
+  gyroZ = imu.gz; 
 
 
   //時間の更新
-//  double dt = (double)(millis() - time) / 1000; // Calculate delta time  
-  double dt = (double)(millis() - time) / 1000000; // Calculate delta time  
-//  time = millis();
-  time = micros();
-                   
-  double heading;
-  if (my == 0)
-    heading = (mx < 0) ? 180.0 : 0;
-  else
-    heading = atan2(mx, my);
+  double dt = (double)(millis() - time) / 1000; // Calculate delta time  
+  time = millis();
 
-  heading -= DECLINATION * PI / 180;
-
-  if (heading > PI) heading -= (2 * PI);
-  else if (heading < -PI) heading += (2 * PI);
-  else if (heading < 0) heading += 2 * PI;
-
-  // Convert everything from radians to degrees:
-  heading *= 180.0 / PI;
-  pitch *= 180.0 / PI;
-  roll  *= 180.0 / PI;
+#ifdef RESTRICT_PITCH // Eq. 25 and 26 
+  roll  = atan2(accY, accZ) * RAD_TO_DEG;//+++++++++++++++++++++++ 
+  pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG; 
+#else // Eq. 28 and 29 
+  roll  = atan(accY / sqrt(accX * accX + accZ * accZ)) * RAD_TO_DEG; 
+  pitch = atan2(-accX, accZ) * RAD_TO_DEG; 
+#endif
 
 
-heading = 0;
+  double gyroXrate = gyroX / 131.0; // Convert to deg/s 
+  double gyroYrate = gyroY / 131.0; // Convert to deg/s 
+  double gyroZrate = gyroZ / 131.0; // Convert to deg/s 
+
+
+
+#ifdef RESTRICT_PITCH 
+  // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees 
+  if ((roll < -90 && kalAngleX > 90) || (roll > 90 && kalAngleX < -90)) { 
+    kalmanX.setAngle(roll); 
+    kalAngleX = roll; 
+  } else
+    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter 
+  
+  kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
+#else
+  // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees 
+  if ((pitch < -90 && kalAngleY > 90) || (pitch > 90 && kalAngleY < -90)) { 
+    kalmanY.setAngle(pitch); 
+    kalAngleY = pitch; 
+  } else
+    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); // Calculate the angle using a Kalman filter 
+  
+  kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); // Calculate the angle using a Kalman filter 
+#endif
+
+
+
+float heading = 0;
 
     Serial.print("Orientation: ");
     Serial.print(heading);
@@ -299,57 +324,15 @@ heading = 0;
     Serial.println(roll);
 
 
-
-
-
-    
-
-  //*** Gyro ***
-  /*float gyro_x =  gx * dt;
-  float gyro_y = gy * dt;
-
-  //相補フィルタの出力
-  prev_pitch = complementFilter( prev_pitch, gyro_x, pitch );
-  prev_roll = complementFilter( prev_roll, gyro_y, roll );
-
-    Serial.print("Soho filter : ");
+    Serial.print("CalmanFilter: ");
     Serial.print(heading);
     Serial.print(" ");
-    Serial.print(prev_pitch);
+    Serial.print(kalAngleY);
     Serial.print(" ");
-    Serial.println(prev_roll);
-
-  //出力が求められる場合のみ、文字列計算
-  if(print){
-      
-    output = prev_pitch - 90.0;
-    output += ",";
-    output += prev_roll;
-  }
+    Serial.println(kalAngleX);
 
 
-  /*Serial.print("X_rol:");Serial.print("\t");Serial.print(x_rol);Serial.print("\t");
-  Serial.print("Y_rol:");Serial.print("\t");Serial.print(y_rol);Serial.println("");
-
-  Serial.println("====================");
-*/
-
-/*
-    Serial.print("Orientation: ");
-    Serial.print(heading);
-    Serial.print(" ");
-    //Serial.print(pitch);
-    Serial.print(prev_pitch);
-    Serial.print(" ");
-    //Serial.println(roll);
-    Serial.println(prev_roll);
-    
-    //*/
-int factor = 800;
-
-    // update the filter, which computes orientation
-    //filter.updateIMU(gx, gy, gz, ax, ay, az);
-    filter.updateIMU(gx/factor, gy/factor, gz/factor, ax, ay, az);
+    filter.updateIMU(imu.calcGyro(gx), imu.calcGyro(gy), imu.calcGyro(gz), ax, ay, az);
 
 
     // print the heading, pitch and roll
@@ -363,28 +346,6 @@ int factor = 800;
     Serial.print(pitch2);
     Serial.print(" ");
     Serial.println(roll2);
-
-
-//double gyroXrate = gx / 131.0; // Convert to deg/s
-//double gyroYrate = gy / 131.0; // Convert to deg/s
-
-    kalmanX.setAngle(roll); // Set starting angle
-    kalmanY.setAngle(pitch); // Set starting angle
-
-    //カルマンアングルの計算
-//    kalAngleX = kalmanX.getAngle(roll, gyroXrate, dt); 
-//    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); 
-    kalAngleX = kalmanX.getAngle(roll, gx, dt); 
-    kalAngleY = kalmanY.getAngle(pitch, gy, dt); 
-
-Serial.println(dt);
-
-    Serial.print("CalmanFilter: ");
-    Serial.print(heading);
-    Serial.print(" ");
-    Serial.print(kalAngleY);
-    Serial.print(" ");
-    Serial.println(kalAngleX);
 
 
   return output;
@@ -407,9 +368,17 @@ void initCalmanFilter(){
 //  double pitch = filter.getPitch();
 //  double heading = filter.getYaw();
 
+  accX = imu.ax; 
+  accY = imu.ay; 
+  accZ = imu.az; 
 
-  double roll = atan2(imu.ay, imu.az);
-  double pitch = atan(-imu.ax / sqrt(imu.ay * imu.ay + imu.az * imu.az));
+#ifdef RESTRICT_PITCH // Eq. 25 and 26 
+  roll  = atan2(accY, accZ) * RAD_TO_DEG; 
+  pitch = atan(-accX / sqrt(accY * accY + accZ * accZ)) * RAD_TO_DEG; 
+#else // Eq. 28 and 29 
+  roll  = atan(accY / sqrt(accX * accX + accZ * accZ)) * RAD_TO_DEG; 
+  pitch = atan2(-accX, accZ) * RAD_TO_DEG; 
+#endif
 
 
 
@@ -418,8 +387,7 @@ void initCalmanFilter(){
 
 
   //時間の更新
-  //time = millis();
-  time = micros();
+  time = millis();
 }
 
 
