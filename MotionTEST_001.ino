@@ -62,8 +62,8 @@ int WRITE_INTERVAL = 1000;
 
 //###############################################
 //MicroSD 
-//const int chipSelect = 4;//Arduino UNO
-const int chipSelect = 10;//Arduino Micro
+const int chipSelect = 4;//Arduino UNO
+//const int chipSelect = 10;//Arduino Micro
 //###############################################
 
 const int tact_switch = 7;//タクトスイッチ
@@ -204,44 +204,27 @@ String updateMotionSensors(boolean print)
 
   
   //Read three sensors data on the memory
-  readGyro();
-  readAccel();
-  readMag();
-  
+  readMotionSensors();
+
   //メモリ上の角度データの更新（前回値と今回値が考慮される）  
   //return printAttitude (imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
-  return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  //return printAttitude (imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az, -imu.mx, -imu.my, imu.mz, print) + "\n";
+  return printAttitude(print) + "\n";
 
 }
 
 
 
 
-//--------------------　Gyro DATA ------------------------------------
-void readGyro()
+//--------------------　Motion DATA ------------------------------------
+void readMotionSensors()
 {
 
   imu.readGyro();
-
-
-}
-//-------------------　Accel DATA ----------------------
-void readAccel()
-{
-  // To read from the accelerometer, you must first call the
-  // readAccel() function. When this exits, it'll update the
-  // ax, ay, and az variables with the most current data.
   imu.readAccel();
-
-
-}
-//--------------　Mag DATA ------------------
-void readMag()
-{
-
   imu.readMag();
-
 }
+
 //---------------------------------------------------------
 /**
  * printAttitude
@@ -258,7 +241,7 @@ void readMag()
  * print : 値を返すかどうか
  */
 
-String printAttitude(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, boolean print)
+String printAttitude(boolean print)
 {
 
   String output = "";
@@ -332,7 +315,7 @@ float heading = 0;
     Serial.println(kalAngleX);
 
 
-    filter.updateIMU(imu.calcGyro(gx), imu.calcGyro(gy), imu.calcGyro(gz), ax, ay, az);
+/*    filter.updateIMU(imu.calcGyro(gx), imu.calcGyro(gy), imu.calcGyro(gz), ax, ay, az);
 
 
     // print the heading, pitch and roll
@@ -346,7 +329,7 @@ float heading = 0;
     Serial.print(pitch2);
     Serial.print(" ");
     Serial.println(roll2);
-
+*/
 
   return output;
 }
@@ -356,10 +339,8 @@ float heading = 0;
  */
 void initCalmanFilter(){
 
-  readGyro();
-  readAccel();
-  readMag();
-  
+  readMotionSensors();
+
   // update the filter, which computes orientation
   //filter.updateIMU(imu.calcGyro(imu.gx), imu.calcGyro(imu.gy), imu.calcGyro(imu.gz), imu.ax, imu.ay, imu.az);
 //  filter.updateIMU(imu.gx, imu.gy, imu.gz, imu.ax, imu.ay, imu.az);
